@@ -1,3 +1,6 @@
+# ============================================
+# 1. backend/users/models.py (UPDATE)
+# ============================================
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -7,6 +10,12 @@ class User(AbstractUser):
     
     # Storage Tracking (Bytes)
     storage_used_bytes = models.BigIntegerField(default=0)
+    
+    # Phone number for duplicate prevention
+    phone = models.CharField(max_length=15, unique=True, null=True, blank=True)
+    
+    # Email verification
+    email_verified = models.BooleanField(default=False)
     
     # Limits (in bytes)
     LIMIT_FREE = 200 * 1024 * 1024          # 200 MB

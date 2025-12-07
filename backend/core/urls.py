@@ -1,3 +1,6 @@
+ #============================================
+# 5. backend/core/urls.py (UPDATE)
+# ============================================
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import (
@@ -8,6 +11,7 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/locations/', include('locations.urls')),
+    path('api/auth/', include('users.urls')),  # NEW LINE
     
     # 🔐 AUTH ENDPOINTS
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api, { setAuthToken } from '@/utils/api';
+import api from '@/utils/api';
 
 const TRAVEL_STORIES = [
   {
@@ -16,11 +16,11 @@ const TRAVEL_STORIES = [
   },
   {
     url: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&q=80',
-    tagline: 'Every place tells a story. Map yours.',
+    tagline: 'Track where youve been, store what you saw',
   },
   {
     url: 'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=1200&q=80',
-    tagline: "From where you've been to where you'll go",
+    tagline: 'Every country, state, city. One map.',
   },
   {
     url: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=1200&q=80',
@@ -28,10 +28,15 @@ const TRAVEL_STORIES = [
   }
 ];
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -43,19 +48,61 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSignup = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
+    // Validation
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    if (!formData.phone.match(/^[+]?[0-9]{10,15}$/)) {
+      setError('Please enter a valid phone number');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const response = await api.post('/token/', { username, password });
-      const { access } = response.data;
-      setAuthToken(access);
-      router.push('/dashboard');
-    } catch (err: any) {
+      const response = await api.post('/auth/signup/', {
+        username: formData.username,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        confirm_password: formData.confirmPassword
+      });
+
+      // Success - redirect to login
+      router.push('/login?signup=success');
+    } catch (err) {
       console.error(err);
-      setError('Invalid credentials');
+      
+      // Handle specific errors from backend
+      if (err.response?.data?.error === 'email') {
+        setError(err.response.data.message);
+      } else if (err.response?.data?.error === 'username') {
+        setError(err.response.data.message);
+      } else if (err.response?.data?.error === 'phone') {
+        setError(err.response.data.message);
+      } else if (err.response?.data?.error === 'password') {
+        setError(err.response.data.message);
+      } else {
+        setError('Signup failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -68,7 +115,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex bg-stone-100 overflow-hidden">
       
-      {/* Left Side - Visual Story */}
+      {/* Left Side - Carousel (Same as login) */}
       <div className="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-stone-900">
         {TRAVEL_STORIES.map((story, index) => (
           <div
@@ -108,16 +155,16 @@ export default function LoginPage() {
         ))}
       </div>
 
-      {/* Right Side - Login */}
+      {/* Right Side - Signup Form */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md space-y-7">
+        <div className="w-full max-w-md space-y-6">
           
           <div>
             <h1 className="text-4xl font-serif font-bold text-olive-800 mb-2">
-              Mapped
+              Create Account
             </h1>
-            <p className="text-lg text-stone-700">
-              Map your travels, store your memories
+            <p className="text-base text-stone-700">
+              Start mapping your travels today
             </p>
           </div>
 
@@ -128,13 +175,44 @@ export default function LoginPage() {
               </label>
               <input 
                 type="text" 
+                name="username"
                 required
                 className="w-full px-4 py-3 bg-white border-2 border-stone-300 focus:border-olive-600 outline-none transition-colors"
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin(e)}
+                placeholder="Choose a username"
+                value={formData.username}
+                onChange={handleChange}
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
+                Email
+              </label>
+              <input 
+                type="email" 
+                name="email"
+                required
+                className="w-full px-4 py-3 bg-white border-2 border-stone-300 focus:border-olive-600 outline-none transition-colors"
+                placeholder="your@email.com"
+                value={formData.email}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
+                Phone Number
+              </label>
+              <input 
+                type="tel" 
+                name="phone"
+                required
+                className="w-full px-4 py-3 bg-white border-2 border-stone-300 focus:border-olive-600 outline-none transition-colors"
+                placeholder="+91 9876543210"
+                value={formData.phone}
+                onChange={handleChange}
+              />
+              <p className="text-xs text-stone-500 mt-1">One account per phone number</p>
             </div>
 
             <div>
@@ -143,12 +221,27 @@ export default function LoginPage() {
               </label>
               <input 
                 type="password" 
+                name="password"
                 required
                 className="w-full px-4 py-3 bg-white border-2 border-stone-300 focus:border-olive-600 outline-none transition-colors"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin(e)}
+                placeholder="At least 8 characters"
+                value={formData.password}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
+                Confirm Password
+              </label>
+              <input 
+                type="password" 
+                name="confirmPassword"
+                required
+                className="w-full px-4 py-3 bg-white border-2 border-stone-300 focus:border-olive-600 outline-none transition-colors"
+                placeholder="Re-enter password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
               />
             </div>
 
@@ -159,55 +252,28 @@ export default function LoginPage() {
             )}
 
             <button 
-              onClick={handleLogin}
+              onClick={handleSignup}
               disabled={loading}
               className="w-full bg-olive-700 hover:bg-olive-800 text-stone-50 font-bold py-3 transition-colors disabled:opacity-50 border-2 border-olive-900 uppercase tracking-wide"
             >
-              {loading ? 'Logging in...' : 'Log In'}
+              {loading ? 'Creating Account...' : 'Create Account'}
             </button>
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 border-t border-stone-300" />
-              <span className="text-xs text-stone-500 uppercase tracking-wide">Or</span>
-              <div className="flex-1 border-t border-stone-300" />
-            </div>
-            
             <div className="text-center text-sm text-stone-600">
-              Don't have an account?{' '}
-              <Link href="/register" className="text-olive-700 font-bold hover:underline">
-                Create one
+              Already have an account?{' '}
+              <Link href="/login" className="text-olive-700 font-bold hover:underline">
+                Log in
               </Link>
             </div>
-          </div>
-
-          {/* Value Props */}
-          <div className="space-y-3 border-t-2 border-stone-200 pt-6">
-            <ValueProp 
-              title="Pin photos to places" 
-              description="Camera roll organized by geography"
-            />
-            <ValueProp 
-              title="Track your travels" 
-              description="Countries, states, districts on one map"
-            />
-            <ValueProp 
-              title="Store memories" 
-              description="200MB free, 5GB with premium"
-            />
+            
+            <p className="text-xs text-stone-500 text-center leading-relaxed">
+              By signing up, you agree to our Terms of Service and Privacy Policy
+            </p>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ValueProp({ title, description }: { title: string; description: string }) {
-  return (
-    <div>
-      <h3 className="text-sm font-bold text-olive-800 mb-1">{title}</h3>
-      <p className="text-sm text-stone-600">{description}</p>
     </div>
   );
 }
