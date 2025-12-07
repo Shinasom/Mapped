@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Travel Map v2 (Stacked Layers)</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #aadaff;
+      } /* Ocean color */
+      #map {
+        height: 100vh;
+        width: 100vw;
+      }
+
+      /* Better Debug Panel */
+      #ui-panel {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        width: 280px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        backdrop-filter: blur(5px);
+      }
+      .stat-box {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      .layer-indicator {
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: #eee;
+        color: #999;
+        font-size: 12px;
+        transition: all 0.3s ease;
+      }
+      .layer-indicator.active {
+        background: #2563eb;
+        color: white;
+        font-weight: 600;
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid #eee;
+        margin: 15px 0;
+      }
+      h3 {
+        margin: 0 0 15px 0;
+        font-size: 18px;
+        color: #1e293b;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui-panel">
+      <h3>🌍 Map Layers</h3>
+
+      <div class="stat-box">
+        <span>Zoom Level:</span>
+        <strong id="zoom-display">--</strong>
+      </div>
+
+      <hr />
+
+      <div class="stat-box">
+        <span>Base Layer:</span>
+        <span id="badge-world" class="layer-indicator active">World</span>
+      </div>
+      <div class="stat-box">
+        <span>Detail Layer:</span>
+        <span id="badge-state" class="layer-indicator">States</span>
+      </div>
+      <div class="stat-box">
+        <span>Action Layer:</span>
+        <span id="badge-district" class="layer-indicator">Districts</span>
+      </div>
+
+      <hr />
+      <div style="font-size: 12px; color: #666; line-height: 1.4">
+        <b>Try this:</b><br />
+        1. Zoom into India.<br />
+        2. Notice neighboring countries stay visible.<br />
+        3. Click a district to test "Bubble Up".
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // --- CONFIGURATION ---
+      const PATHS = {
+        world: "public/geojson/world-countries.json",
+        states: "public/geojson/india-states.json",
+        districts: "public/geojson/india-districts.json",
+      };
+
+      // --- STATE ---
+      const visited = {
+        districts: new Set(),
+        states: new Set(),
+        countries: new Set(),
+      };
+
+      // --- MAP SETUP ---
+      // Note: We set a generic 'world' background color via CSS on the body (#aadaff)
+      const map = L.map("map", {
+        zoomControl: false,
+        minZoom: 2,
+        maxZoom: 10,
+      }).setView([20.5937, 78.9629], 4);
+
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+
+      // Layers Storage
+      const layers = {
+        world: null,
+        states: null,
+        districts: null,
+      };
+
+      // --- STYLING ---
+      // Refined styles for better overlaying
+      const STYLES = {
+        world: {
+          fillColor: "#f8f9fa",
+          weight: 1,
+          opacity: 1,
+          color: "#dee2e6", // Subtle borders
+          fillOpacity: 1,
+        },
+        state: {
+          fillColor: "transparent", // Transparent so world shows through (unless visited)
+          weight: 1.5,
+          opacity: 1,
+          color: "#64748b", // Darker state borders
+          fillOpacity: 0,
+        },
+        district: {
+          fillColor: "transparent",
+          weight: 0.5,
+          opacity: 1,
+          color: "#94a3b8", // Subtle district borders
+          fillOpacity: 0,
+        },
+        highlight: {
+          weight: 3,
+          color: "#2563eb", // Bright Blue hover
+          fillOpacity: 0.2,
+        },
+        visited: {
+          fillColor: "#ef4444", // Red
+          fillOpacity: 0.6,
+        },
+      };
+
+      function getFeatureStyle(feature, level) {
+        // Base style
+        let style = { ...STYLES[level] };
+
+        // Check visited status
+        let isVisited = false;
+        if (
+          level === "district" &&
+          visited.districts.has(feature.properties.name)
+        )
+          isVisited = true;
+        if (level === "state" && visited.states.has(feature.properties.name))
+          isVisited = true;
+        if (level === "world" && visited.countries.has(feature.properties.name))
+          isVisited = true;
+
+        if (isVisited) {
+          style.fillColor = STYLES.visited.fillColor;
+          style.fillOpacity = STYLES.visited.fillOpacity;
+        }
+
+        return style;
+      }
+
+      // --- INTERACTION ---
+      function highlightFeature(e) {
+        const layer = e.target;
+        layer.setStyle(STYLES.highlight);
+        layer.bringToFront(); // Crucial: brings hover to top
+      }
+
+      function resetHighlight(e, level) {
+        const layer = e.target;
+        // Reset to original style logic
+        layer.setStyle(getFeatureStyle(layer.feature, level));
+      }
+
+      function onDistrictClick(e) {
+        const props = e.target.feature.properties;
+        const dName = props.name;
+        const sName = props.region;
+        const cName = props.country;
+
+        // Toggle logic
+        if (visited.districts.has(dName)) {
+          visited.districts.delete(dName);
+          console.log("Unmarked:", dName);
+        } else {
+          visited.districts.add(dName);
+          visited.states.add(sName);
+          visited.countries.add(cName);
+          console.log("Marked:", dName);
+        }
+
+        // Re-render ALL layers to show Bubble Up effect
+        if (layers.districts)
+          layers.districts.setStyle((f) => getFeatureStyle(f, "district"));
+        if (layers.states)
+          layers.states.setStyle((f) => getFeatureStyle(f, "state"));
+        if (layers.world)
+          layers.world.setStyle((f) => getFeatureStyle(f, "world"));
+      }
+
+      // --- LOADING LAYERS ---
+      async function initMap() {
+        // 1. Load World (Always visible base)
+        const worldData = await fetch(PATHS.world).then((r) => r.json());
+
+        layers.world = L.geoJSON(worldData, {
+          style: (f) => getFeatureStyle(f, "world"),
+          onEachFeature: (feature, layer) => {
+            layer.bindTooltip(feature.properties.name, {
+              sticky: true,
+              direction: "top",
+            });
+            layer.on({
+              mouseover: highlightFeature,
+              mouseout: (e) => resetHighlight(e, "world"),
+            });
+          },
+        }).addTo(map);
+
+        // 2. Pre-load India Layers (but don't add to map yet)
+        const stateData = await fetch(PATHS.states).then((r) => r.json());
+        layers.states = L.geoJSON(stateData, {
+          style: (f) => getFeatureStyle(f, "state"),
+          onEachFeature: (feature, layer) => {
+            // No tooltip for states to avoid clutter vs districts? Or maybe simple one.
+            layer.on({
+              mouseover: highlightFeature,
+              mouseout: (e) => resetHighlight(e, "state"),
+            });
+          },
+        });
+
+        const districtData = await fetch(PATHS.districts).then((r) => r.json());
+        layers.districts = L.geoJSON(districtData, {
+          style: (f) => getFeatureStyle(f, "district"),
+          onEachFeature: (feature, layer) => {
+            layer.bindTooltip(feature.properties.name, { sticky: true });
+            layer.on({
+              mouseover: highlightFeature,
+              mouseout: (e) => resetHighlight(e, "district"),
+              click: onDistrictClick,
+            });
+          },
+        });
+
+        // Start zoom listener
+        map.on("zoomend", updateVisibleLayers);
+        updateVisibleLayers();
+      }
+
+      function updateVisibleLayers() {
+        const zoom = map.getZoom();
+        document.getElementById("zoom-display").innerText = zoom;
+
+        // LOGIC: Stack layers based on zoom
+        // World is ALWAYS on map.
+
+        // STATES: Show if Zoom >= 5
+        const showStates = zoom >= 5;
+        if (showStates) {
+          if (!map.hasLayer(layers.states)) map.addLayer(layers.states);
+          document.getElementById("badge-state").classList.add("active");
+        } else {
+          if (map.hasLayer(layers.states)) map.removeLayer(layers.states);
+          document.getElementById("badge-state").classList.remove("active");
+        }
+
+        // DISTRICTS: Show if Zoom >= 7
+        const showDistricts = zoom >= 7;
+        if (showDistricts) {
+          if (!map.hasLayer(layers.districts)) map.addLayer(layers.districts);
+          document.getElementById("badge-district").classList.add("active");
+
+          // UX Tweak: When districts are visible, maybe turn off state interactivity
+          // so you don't double-hover? For now, we keep both.
+        } else {
+          if (map.hasLayer(layers.districts)) map.removeLayer(layers.districts);
+          document.getElementById("badge-district").classList.remove("active");
+        }
+      }
+
+      // Run
+      initMap();
+    </script>
+  </body>
+</html>
