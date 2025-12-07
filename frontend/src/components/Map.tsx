@@ -1,15 +1,45 @@
+// frontend/src/components/Map.tsx
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import api from '../utils/api';
+import api from '@/utils/api';
+import LocationModal from '@/components/map/LocationModal';
+import Toast from '@/components/map/Toast';
+import MapHUD from '@/components/map/MapHUD';
+
+
+// --- TYPES ---
+type LocationLevel = 'world' | 'state' | 'district';
+
+interface VisitedLocations {
+  districts: Set<string>;
+  states: Set<string>;
+  countries: Set<string>;
+}
+
+interface GeoDataState {
+  world: any;
+  states: any;
+  districts: any;
+}
+
+interface SelectedFeature {
+  feature: any;
+  level: LocationLevel;
+}
 
 // --- CONFIGURATION ---
 const MAP_PROVIDER = {
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; OpenStreetMap contributors'
+  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  attribution: '&copy; OpenStreetMap contributors'
+};
+
+const ZOOM_THRESHOLDS = {
+  STATES: 5,
+  DISTRICTS: 7
 };
 
 const iconDefault = L.icon({
@@ -18,16 +48,35 @@ const iconDefault = L.icon({
 });
 L.Marker.prototype.options.icon = iconDefault;
 
-// --- STYLES ---
+// --- STYLES (Olive Theme) ---
 const STYLES = {
-  unvisited: { fillColor: '#f1f5f9', fillOpacity: 1, weight: 1, color: '#94a3b8' },
-  visited: { fillColor: 'transparent', fillOpacity: 0, weight: 2, color: '#3b82f6' },
-  highlightLocked: { weight: 2, color: '#d97706', fillColor: '#fbbf24', fillOpacity: 1 },
-  highlightUnlocked: { weight: 4, color: '#f59e0b', fillOpacity: 0 }
+  unvisited: { 
+    fillColor: '#e7e5e4', 
+    fillOpacity: 1, 
+    weight: 1, 
+    color: '#a8a29e' 
+  },
+  visited: { 
+    fillColor: 'transparent', 
+    fillOpacity: 0, 
+    weight: 2, 
+    color: '#556042' 
+  },
+  highlightLocked: { 
+    weight: 2, 
+    color: '#d97706', 
+    fillColor: '#fbbf24', 
+    fillOpacity: 0.3 
+  },
+  highlightUnlocked: { 
+    weight: 3, 
+    color: '#556042', 
+    fillOpacity: 0.1,
+    fillColor: '#6d7655'
+  }
 };
 
 // --- SUB-COMPONENTS ---
-
 function MapController({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
   const map = useMapEvents({
     zoomend: () => onZoomChange(map.getZoom()),
@@ -35,87 +84,39 @@ function MapController({ onZoomChange }: { onZoomChange: (zoom: number) => void 
   return null;
 }
 
-// 🆕 THE CONFIRMATION MODAL
-function LocationModal({ 
-    feature, 
-    isVisited, 
-    onClose, 
-    onConfirm 
-}: { 
-    feature: any, 
-    isVisited: boolean, 
-    onClose: () => void, 
-    onConfirm: () => void 
-}) {
-    if (!feature) return null;
-
-    const props = feature.properties;
-    const name = props.name;
-    const parent = props.region || props.country || "World";
-
-    return (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
-                
-                {/* Header Image Placeholder */}
-                <div className="h-32 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white/50">
-                    <span className="text-4xl">📸</span>
-                </div>
-
-                <div className="p-6">
-                    <h2 className="text-2xl font-bold text-gray-800">{name}</h2>
-                    <p className="text-gray-500 text-sm mb-6">{parent}</p>
-
-                    {/* Placeholder for Future Photo Feature */}
-                    <div className="mb-6 p-4 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 gap-2 hover:bg-gray-50 transition cursor-pointer">
-                        <span>📷</span>
-                        <span className="text-xs font-medium">Add a photo (Coming Soon)</span>
-                    </div>
-
-                    <div className="flex gap-3">
-                        <button 
-                            onClick={onClose}
-                            className="flex-1 px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            onClick={onConfirm}
-                            className={`flex-1 px-4 py-2 text-white font-bold rounded-lg shadow-lg transition transform active:scale-95 ${
-                                isVisited 
-                                ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' 
-                                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
-                            }`}
-                        >
-                            {isVisited ? 'Remove Visit' : 'Mark Visited'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 // --- MAIN COMPONENT ---
-
 export default function Map() {
   const [zoom, setZoom] = useState(4);
-  const [geoData, setGeoData] = useState<{ world: any, states: any, districts: any }>({
-    world: null, states: null, districts: null
+  const [geoData, setGeoData] = useState<GeoDataState>({
+    world: null,
+    states: null,
+    districts: null
   });
   
-  const [visited, setVisited] = useState({
+  const [visited, setVisited] = useState<VisitedLocations>({
     districts: new Set<string>(),
     states: new Set<string>(),
     countries: new Set<string>()
   });
 
-  // 🆕 Modal State
-  const [selectedFeature, setSelectedFeature] = useState<{ feature: any, level: 'world'|'state'|'district' } | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // 1. Load Data
+  const worldLayerKey = useRef(0);
+  const statesLayerKey = useRef(0);
+  const districtsLayerKey = useRef(0);
+
+  const isLayerVisible = {
+    states: zoom >= ZOOM_THRESHOLDS.STATES,
+    districts: zoom >= ZOOM_THRESHOLDS.DISTRICTS
+  };
+
+  // 1. Load GeoJSON Data
   useEffect(() => {
     const loadGeoData = async () => {
+      setIsLoadingData(true);
       try {
         const [w, s, d] = await Promise.all([
           fetch('/geojson/world-countries.json').then(r => r.json()),
@@ -125,12 +126,15 @@ export default function Map() {
         setGeoData({ world: w, states: s, districts: d });
       } catch (err) {
         console.error("Failed to load map data", err);
+        setToast({ message: 'Failed to load map data', type: 'error' });
+      } finally {
+        setIsLoadingData(false);
       }
     };
     loadGeoData();
   }, []);
 
-  // 2. Fetch Progress
+  // 2. Fetch User Progress
   const fetchUserProgress = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -142,8 +146,13 @@ export default function Map() {
         states: new Set(res.data.states),
         countries: new Set(res.data.countries)
       });
+
+      worldLayerKey.current++;
+      statesLayerKey.current++;
+      districtsLayerKey.current++;
     } catch (err) {
       console.error("Failed to fetch user progress", err);
+      setToast({ message: 'Failed to load your progress', type: 'error' });
     }
   }, []);
 
@@ -151,154 +160,170 @@ export default function Map() {
     fetchUserProgress();
   }, [fetchUserProgress]);
 
-  // 3. EXECUTE ACTION (Called by Modal)
+  // 3. Execute Location Action
   const executeLocationAction = async () => {
-    if (!selectedFeature) return;
+    if (!selectedFeature || isActionLoading) return;
 
     const { feature, level: layerLevel } = selectedFeature;
     const props = feature.properties;
     const name = props.name;
     
-    // Close modal immediately
-    setSelectedFeature(null);
+    setIsActionLoading(true);
 
-    // Prepare Logic
     let apiLevel = 0;
     let parent = null;
     let grandparent = null;
 
     if (layerLevel === 'district') {
-        apiLevel = 2;
-        parent = props.region;
-        grandparent = props.country;
+      apiLevel = 2;
+      parent = props.region;
+      grandparent = props.country;
     } else if (layerLevel === 'state') {
-        apiLevel = 1;
-        parent = props.country;
-    } else { 
-        apiLevel = 0;
+      apiLevel = 1;
+      parent = props.country;
     }
 
-    let isAlreadyVisited = false;
-    if (layerLevel === 'district') isAlreadyVisited = visited.districts.has(name);
-    else if (layerLevel === 'state') isAlreadyVisited = visited.states.has(name);
-    else isAlreadyVisited = visited.countries.has(name);
+    const isAlreadyVisited = 
+      layerLevel === 'district' ? visited.districts.has(name) :
+      layerLevel === 'state' ? visited.states.has(name) :
+      visited.countries.has(name);
 
-    // Optimistic Update
+    const previousVisited = { ...visited };
     setVisited(prev => {
-        const next = {
-            districts: new Set(prev.districts),
-            states: new Set(prev.states),
-            countries: new Set(prev.countries)
-        };
-        const targetSet = layerLevel === 'district' ? next.districts 
-            : layerLevel === 'state' ? next.states 
-            : next.countries;
+      const next = {
+        districts: new Set(prev.districts),
+        states: new Set(prev.states),
+        countries: new Set(prev.countries)
+      };
+      const targetSet = 
+        layerLevel === 'district' ? next.districts :
+        layerLevel === 'state' ? next.states :
+        next.countries;
 
-        if (isAlreadyVisited) targetSet.delete(name); 
-        else targetSet.add(name);
-        return next;
+      if (isAlreadyVisited) targetSet.delete(name);
+      else targetSet.add(name);
+      return next;
     });
 
-    // Server Sync
     try {
       const payload = { name, level: apiLevel, parent, grandparent };
       const response = isAlreadyVisited 
         ? await api.delete('/locations/mark/', { data: payload })
         : await api.post('/locations/mark/', payload);
 
-      if (response.status !== 200) throw new Error("Server error");
-      fetchUserProgress(); 
-
+      if (response.status === 200) {
+        setToast({ 
+          message: isAlreadyVisited ? `Removed ${name}` : `Marked ${name}`,
+          type: 'success'
+        });
+        await fetchUserProgress();
+      } else {
+        throw new Error("Server error");
+      }
     } catch (err) {
       console.error("Sync failed:", err);
-      // Rollback
-      setVisited(prev => {
-        const next = { ...prev }; 
-        const targetSet = layerLevel === 'district' ? next.districts 
-            : layerLevel === 'state' ? next.states 
-            : next.countries;
-        if (isAlreadyVisited) targetSet.add(name); 
-        else targetSet.delete(name);
-        return next;
-      });
-      alert("Connection failed. Reverting.");
+      setVisited(previousVisited);
+      setToast({ message: 'Failed. Try again.', type: 'error' });
+    } finally {
+      setIsActionLoading(false);
+      setSelectedFeature(null);
     }
   };
 
   // --- HELPERS ---
-  const isVisitedCheck = (name: string, level: string) => {
+  const isVisitedCheck = (name: string, level: LocationLevel): boolean => {
     if (level === 'district') return visited.districts.has(name);
     if (level === 'state') return visited.states.has(name);
     if (level === 'world') return visited.countries.has(name);
     return false;
   };
 
-  const getStyle = (feature: any, level: 'world' | 'state' | 'district') => {
-    return isVisitedCheck(feature.properties.name, level) ? STYLES.visited : STYLES.unvisited;
+  const getStyle = (feature: any, level: LocationLevel) => {
+    return isVisitedCheck(feature.properties.name, level) 
+      ? STYLES.visited 
+      : STYLES.unvisited;
   };
 
-  const onEachFeature = (feature: any, layer: any, level: string) => {
-    layer.bindTooltip(feature.properties.name, { sticky: true, direction: 'top' });
+  const onEachFeature = (feature: any, layer: any, level: LocationLevel) => {
+    const name = feature.properties.name;
+    
+    layer.bindTooltip(name, { 
+      sticky: true, 
+      direction: 'top',
+      className: 'custom-tooltip'
+    });
     
     let isClickable = false;
-    const countryName = feature.properties.name;
-
-    if (level === 'district') isClickable = true; 
-    else if (level === 'state') isClickable = false; 
-    else if (level === 'world' && countryName !== 'India') isClickable = true;
+    if (level === 'district') {
+      isClickable = true;
+    } else if (level === 'world' && name !== 'India') {
+      isClickable = true;
+    }
 
     layer.on({
       mouseover: (e: any) => {
         const l = e.target;
-        const isVisited = isVisitedCheck(feature.properties.name, level);
-        if (isVisited) l.setStyle(STYLES.highlightUnlocked);
-        else l.setStyle(STYLES.highlightLocked);
+        const isVisited = isVisitedCheck(name, level);
+        
+        l.setStyle(isVisited ? STYLES.highlightUnlocked : STYLES.highlightLocked);
         l.bringToFront();
-        if (isClickable) l.getElement().style.cursor = 'pointer';
+        
+        if (isClickable) {
+          l.getElement().style.cursor = 'pointer';
+        }
       },
       mouseout: (e: any) => {
         const l = e.target;
-        l.setStyle(getStyle(feature, level as any));
+        l.setStyle(getStyle(feature, level));
       },
       click: (e: any) => {
         L.DomEvent.stopPropagation(e);
         if (isClickable) {
-            // 🆕 INSTEAD OF MARKING IMMEDIATELY, OPEN MODAL
-            setSelectedFeature({ feature, level: level as any });
+          setSelectedFeature({ feature, level });
         }
       }
     });
   };
 
+  if (isLoadingData) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-stone-100">
+        <div className="text-center">
+          <div className="text-6xl mb-3">🗺</div>
+          <p className="text-stone-600 font-medium">Loading map...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!geoData.world) return null;
 
   return (
-    <div id="map-container" className="relative w-full h-screen bg-slate-200">
+    <div id="map-container" className="relative w-full h-screen bg-stone-200">
       
-      {/* 🆕 RENDER MODAL IF SELECTED */}
-      {selectedFeature && (
-          <LocationModal 
-            feature={selectedFeature.feature}
-            isVisited={isVisitedCheck(selectedFeature.feature.properties.name, selectedFeature.level)}
-            onClose={() => setSelectedFeature(null)}
-            onConfirm={executeLocationAction}
-          />
+      {toast && (
+        <Toast 
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
 
-      {/* HUD */}
-      <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur p-4 rounded-xl shadow-lg w-64">
-        <h3 className="font-bold text-slate-800 mb-2">🌍 Travel Layers</h3>
-        <div className="flex justify-between text-sm mb-2">
-          <span>Zoom: <strong className="text-blue-600">{zoom}</strong></span>
-          <span className="text-xs text-gray-500">{visited.districts.size} districts</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs mt-2">
-            <div className="w-3 h-3 border-2 border-blue-500 bg-white/20 rounded-sm"></div>
-            <span>Revealed</span>
-            <div className="w-3 h-3 bg-slate-200 border border-slate-300 rounded-sm ml-2"></div>
-            <span>Fog (Unvisited)</span>
-        </div>
-      </div>
+      {selectedFeature && (
+        <LocationModal 
+          feature={selectedFeature.feature}
+          isVisited={isVisitedCheck(selectedFeature.feature.properties.name, selectedFeature.level)}
+          onClose={() => !isActionLoading && setSelectedFeature(null)}
+          onConfirm={executeLocationAction}
+          isLoading={isActionLoading}
+        />
+      )}
+
+      <MapHUD 
+        zoom={zoom}
+        visited={visited}
+        isLayerVisible={isLayerVisible}
+      />
 
       <MapContainer 
         center={[20.5937, 78.9629]} 
@@ -306,28 +331,41 @@ export default function Map() {
         scrollWheelZoom={true} 
         className="w-full h-full"
         zoomControl={false}
-        style={{ background: '#aad3df' }}
+        style={{ background: '#c7c8cc' }}
+        minZoom={2}
+        maxZoom={10}
+        maxBounds={[[-90, -180], [90, 180]]}
+        maxBoundsViscosity={1.0}
+        worldCopyJump={false}
       >
         <MapController onZoomChange={setZoom} />
         
-        <TileLayer url={MAP_PROVIDER.url} attribution={MAP_PROVIDER.attribution} />
+        <TileLayer 
+          url={MAP_PROVIDER.url} 
+          attribution={MAP_PROVIDER.attribution}
+          noWrap={true}
+          bounds={[[-90, -180], [90, 180]]}
+        />
 
         <GeoJSON 
+          key={`world-${worldLayerKey.current}`}
           data={geoData.world} 
           style={(f) => getStyle(f, 'world')} 
           onEachFeature={(f, l) => onEachFeature(f, l, 'world')} 
         />
 
-        {zoom >= 5 && geoData.states && (
+        {isLayerVisible.states && geoData.states && (
           <GeoJSON 
+            key={`states-${statesLayerKey.current}`}
             data={geoData.states} 
             style={(f) => getStyle(f, 'state')} 
             onEachFeature={(f, l) => onEachFeature(f, l, 'state')} 
           />
         )}
 
-        {zoom >= 7 && geoData.districts && (
+        {isLayerVisible.districts && geoData.districts && (
           <GeoJSON 
+            key={`districts-${districtsLayerKey.current}`}
             data={geoData.districts} 
             style={(f) => getStyle(f, 'district')} 
             onEachFeature={(f, l) => onEachFeature(f, l, 'district')} 

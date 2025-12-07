@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f5f4;
+  --foreground: #292524;
+
+  /* Olive Green Scale */
+  --olive-50: #f6f7f4;
+  --olive-100: #e3e6dd;
+  --olive-200: #c7ccba;
+  --olive-300: #a6af92;
+  --olive-400: #89936f;
+  --olive-500: #6d7655;
+  --olive-600: #556042;
+  --olive-700: #434c36;
+  --olive-800: #37402e;
+  --olive-900: #2f3629;
+  --olive-950: #181d15;
 }
 
 @theme inline {
@@ -10,17 +23,35 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Olive Colors */
+  --color-olive-50: var(--olive-50);
+  --color-olive-100: var(--olive-100);
+  --color-olive-200: var(--olive-200);
+  --color-olive-300: var(--olive-300);
+  --color-olive-400: var(--olive-400);
+  --color-olive-500: var(--olive-500);
+  --color-olive-600: var(--olive-600);
+  --color-olive-700: var(--olive-700);
+  --color-olive-800: var(--olive-800);
+  --color-olive-900: var(--olive-900);
+  --color-olive-950: var(--olive-950);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1c1917;
+    --foreground: #fafaf9;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Remove default Leaflet styles that conflict */
+.leaflet-container {
   font-family: Arial, Helvetica, sans-serif;
 }
